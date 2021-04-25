@@ -1,5 +1,6 @@
 mod model;
 mod protocol;
+mod worker;
 use uuid::Uuid;
 
 fn main() {

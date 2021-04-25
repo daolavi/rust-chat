@@ -1,4 +1,6 @@
 use super::message::Message;
+
+#[derive(Default)]
 pub struct Feed {
   pub messages: Vec<Message>
 }
