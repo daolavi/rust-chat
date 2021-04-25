@@ -1,4 +1,5 @@
 mod model;
+mod protocol;
 use uuid::Uuid;
 
 fn main() {
