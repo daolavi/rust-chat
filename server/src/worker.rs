@@ -1,8 +1,19 @@
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::{RwLock, broadcast, mpsc::UnboundedReceiver};
+use regex::Regex;
+use tokio::sync::{broadcast, mpsc::UnboundedReceiver, RwLock};
 
-use crate::{model::{feed::Feed, user::User}, protocol::{request::{JoinRequestData, PostMessageRequestData, RequestMessage}, response::{ResponseData, ResponseMessage}}};
+use crate::{
+    model::{feed::Feed, user::User},
+    protocol::{
+        request::{JoinRequestData, PostMessageRequestData, RequestMessage},
+        response::{ErrorType, ResponseData, ResponseMessage},
+    },
+};
 use uuid::Uuid;
+
+lazy_static! {
+  static ref USER_NAME_REGEX: Regex = Regex::new("[A-Za-z\\s]{4,24}").unwrap();
+}
 
 pub struct Worker {
     pub alive_interval: Option<Duration>,
@@ -33,6 +44,13 @@ impl Worker {
             .values()
             .any(|user| user.name == user_name)
         {
+          self.send_error(client_id, ErrorType::NameExisted);
+          return;
+        }
+
+        if !USER_NAME_REGEX.is_match(user_name) {
+          self.send_error(client_id, ErrorType::InvalidName);
+          return;
         }
     }
 
@@ -43,11 +61,15 @@ impl Worker {
     ) {
     }
 
-    fn send_error(&self) {}
+    fn send_error(&self, client_id: Uuid, error_type: ErrorType) {
+        self.send_message_to_client(client_id, ResponseData::Error(error_type))
+    }
 
     fn send_message_to_client(&self, client_id: Uuid, response_data: ResponseData) {
-      if self.response_sender.receiver_count() > 0 {
-        self.response_sender.send(ResponseMessage::new(client_id, response_data)).unwrap();
-      }
+        if self.response_sender.receiver_count() > 0 {
+            self.response_sender
+                .send(ResponseMessage::new(client_id, response_data))
+                .unwrap();
+        }
     }
 }

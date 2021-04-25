@@ -19,7 +19,7 @@ impl ResponseMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ResponseData {
-    Error(ErrorReponse),
+    Error(ErrorType),
     Alive,
     Joined,
     UserJoined,
@@ -29,7 +29,7 @@ pub enum ResponseData {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ErrorReponse {
+pub enum ErrorType {
   NameExisted,
   InvalidName,
   InvalidRequest
