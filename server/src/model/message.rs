@@ -2,6 +2,7 @@ use super::user::User;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+#[derive(Debug, Clone)]
 pub struct Message {
   pub id: Uuid,
   pub user: User,

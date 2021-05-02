@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone)]
 pub struct RequestMessage {
     pub client_id: Uuid,
     pub request_data: RequestData,
