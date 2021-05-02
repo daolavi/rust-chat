@@ -12,7 +12,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use regex::Regex;
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast, mpsc::UnboundedReceiver};
 use tokio::time;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
@@ -39,9 +39,10 @@ impl Worker {
         }
     }
 
-    pub async fn run(&self, receiver: UnboundedReceiverStream<RequestMessage>) {
+    pub async fn run(&self, receiver: UnboundedReceiver<RequestMessage>) {
         let ticking_alive = self.tick_alive();
-        let processing = receiver.for_each(|input_parcel| self.process(input_parcel));
+        let stream = UnboundedReceiverStream::new(receiver);
+        let processing = stream.for_each(|input_parcel| self.process(input_parcel));
         tokio::select! {
           _ = ticking_alive => (),
           _ = processing => ()
