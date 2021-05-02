@@ -24,7 +24,7 @@ pub enum ResponseData {
     Alive,
     Joined(JoinedResponse),
     UserJoined(UserJoinedResponse),
-    UserLeft,
+    UserLeft(UserLeftResponse),
     Posted(PostedResponse),
     UserPosted(PostedResponse),
 }
@@ -51,6 +51,20 @@ impl UserJoinedResponse {
     pub fn new(user: UserResponse) -> Self {
         UserJoinedResponse { user }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserLeftResponse {
+    pub user_id: Uuid,
+}
+
+impl UserLeftResponse {
+  pub fn new(user_id: Uuid) -> Self {
+    UserLeftResponse {
+      user_id
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1,12 +1,20 @@
+use crate::{
+    model::{feed::Feed, message::Message, user::User},
+    protocol::{
+        request::{JoinRequestData, PostMessageRequestData, RequestData, RequestMessage},
+        response::{
+            ErrorType, JoinedResponse, MessageResponse, PostedResponse, ResponseData,
+            ResponseMessage, UserJoinedResponse, UserLeftResponse, UserResponse,
+        },
+    },
+};
 use chrono::Utc;
+use futures::StreamExt;
 use regex::Regex;
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::{broadcast, mpsc::UnboundedReceiver, RwLock};
-
-use crate::{model::{feed::Feed, message::Message, user::User}, protocol::{request::{JoinRequestData, PostMessageRequestData, RequestData, RequestMessage}, response::{
-            ErrorType, JoinedResponse, MessageResponse, PostedResponse, ResponseData,
-            ResponseMessage, UserJoinedResponse, UserResponse,
-        }}};
+use tokio::sync::{broadcast, RwLock};
+use tokio::time;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
 lazy_static! {
@@ -31,15 +39,48 @@ impl Worker {
         }
     }
 
-    pub fn run(&self, receiver: UnboundedReceiver<RequestMessage>) {
-      let processing = receiver.for_each(|input_parcel| self.process(input_parcel));
+    pub async fn run(&self, receiver: UnboundedReceiverStream<RequestMessage>) {
+        let ticking_alive = self.tick_alive();
+        let processing = receiver.for_each(|input_parcel| self.process(input_parcel));
+        tokio::select! {
+          _ = ticking_alive => (),
+          _ = processing => ()
+        };
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<ResponseMessage> {
+        self.response_sender.subscribe()
+    }
+
+    pub async fn on_disconnect(&self, client_id: Uuid) {
+        if self.users.write().await.remove(&client_id).is_some() {
+            self.send_message_to_other_clients(
+                client_id,
+                ResponseData::UserLeft(UserLeftResponse::new(client_id)),
+            )
+            .await;
+        }
+    }
+
+    async fn tick_alive(&self) {
+        match self.alive_interval {
+            Some(interval) => loop {
+                time::sleep(interval).await;
+                self.send(ResponseData::Alive).await;
+            },
+            None => return,
+        }
     }
 
     async fn process(&self, request_message: RequestMessage) {
-      match request_message.request_data {
-        RequestData::Join(request) => self.process_join(request_message.client_id, request).await,
-        RequestData::PostMessage(request) => self.process_post(request_message.client_id, request).await,
-      }
+        match request_message.request_data {
+            RequestData::Join(request) => {
+                self.process_join(request_message.client_id, request).await
+            }
+            RequestData::PostMessage(request) => {
+                self.process_post(request_message.client_id, request).await
+            }
+        }
     }
 
     async fn process_join(&self, client_id: Uuid, join_request_data: JoinRequestData) {
@@ -154,12 +195,13 @@ impl Worker {
     }
 
     async fn send(&self, response_data: ResponseData) {
-      if self.response_sender.receiver_count() > 0 {
-        self.users.read().await.keys().for_each(|user_id| {
-          self.response_sender.send(ResponseMessage::new(*user_id, response_data.clone()))
-          .unwrap();
-        })
-      }
+        if self.response_sender.receiver_count() > 0 {
+            self.users.read().await.keys().for_each(|user_id| {
+                self.response_sender
+                    .send(ResponseMessage::new(*user_id, response_data.clone()))
+                    .unwrap();
+            })
+        }
     }
 
     fn send_message_to_client(&self, client_id: Uuid, response_data: ResponseData) {
@@ -186,6 +228,73 @@ impl Worker {
     }
 
     fn send_error(&self, client_id: Uuid, error_type: ErrorType) {
-      self.send_message_to_client(client_id, ResponseData::Error(error_type))
-  }
+        self.send_message_to_client(client_id, ResponseData::Error(error_type))
+    }
+}
+
+mod tests {
+    use std::time::Duration;
+
+    use tokio::{runtime::Runtime, sync::mpsc};
+    use uuid::Uuid;
+
+    use crate::protocol::{request::{JoinRequestData, PostMessageRequestData, RequestData, RequestMessage}, response::ResponseData};
+
+    use super::Worker;
+
+    #[test]
+    fn join_and_post() {
+        let worker = Worker::new(Some(Duration::from_secs(1)));
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let mut subscription = worker.subscribe();
+
+        let mut rt = Runtime::new().unwrap();
+        rt.block_on(async move {
+            let case = async {
+                let client_id = Uuid::new_v4();
+
+                // Join
+                sender
+                    .send(RequestMessage::new(
+                        client_id,
+                        RequestData::Join(JoinRequestData {
+                            name: String::from("Dao"),
+                        }),
+                    ))
+                    .unwrap();
+                let output = subscription.recv().await.unwrap().response_data;
+                let user;
+                if let ResponseData::Joined(joined) = output {
+                    assert_eq!(joined.user.name.as_str(), "Dao");
+                    user = joined.user;
+                } else {
+                    panic!("Expected Output::Joined got {:?}", output);
+                }
+
+                // Post message
+                sender
+                    .send(RequestMessage::new(
+                        client_id,
+                        RequestData::PostMessage(PostMessageRequestData {
+                            text: String::from("Hello"),
+                        }),
+                    ))
+                    .unwrap();
+                let output = subscription.recv().await.unwrap().response_data;
+                if let ResponseData::Posted(posted) = output {
+                    assert_eq!(posted.message.text, "Hello");
+                    assert_eq!(posted.message.user.id, user.id);
+                    assert_eq!(posted.message.user.name, user.name);
+                } else {
+                    panic!("Expected Output::Posted got {:?}", output);
+                }
+
+                return;
+            };
+            tokio::select! {
+              _ = worker.run(receiver) => {},
+              _ = case => {},
+            }
+        });
+    }
 }
