@@ -259,14 +259,15 @@ mod tests {
                     .send(RequestMessage::new(
                         client_id,
                         RequestData::Join(JoinRequestData {
-                            name: String::from("Dao"),
+                            name: String::from("daolavi"),
                         }),
                     ))
                     .unwrap();
                 let output = subscription.recv().await.unwrap().response_data;
+                println!("{:?}", output);
                 let user;
                 if let ResponseData::Joined(joined) = output {
-                    assert_eq!(joined.user.name.as_str(), "Dao");
+                    assert_eq!(joined.user.name.as_str(), "daolavi");
                     user = joined.user;
                 } else {
                     panic!("Expected Output::Joined got {:?}", output);
