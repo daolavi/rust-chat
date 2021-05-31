@@ -222,7 +222,7 @@ impl Worker {
                 .filter(|user| user.id != client_id)
                 .for_each(|user| {
                     self.response_sender
-                        .send(ResponseMessage::new(client_id, response_data.clone()))
+                        .send(ResponseMessage::new(user.id, response_data.clone()))
                         .unwrap();
                 })
         }
@@ -233,7 +233,9 @@ impl Worker {
     }
 }
 
+#[cfg(test)]
 mod tests {
+
     use std::time::Duration;
 
     use tokio::{runtime::Runtime, sync::mpsc};

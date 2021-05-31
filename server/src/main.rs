@@ -1,12 +1,9 @@
-#[macro_use]
-extern crate lazy_static;
+use server::server::Server;
 
-mod model;
-mod protocol;
-mod worker;
-use uuid::Uuid;
+#[tokio::main]
+async fn main() {
+  env_logger::init();
 
-fn main() {
-    let id = Uuid::new_v4();
-    println!("{:?}", id);
+  let server = Server::new(8080);
+  server.run().await;
 }
